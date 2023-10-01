@@ -13,7 +13,8 @@ from tensorflow.keras.models import Sequential
 import pandas
 from sklearn.utils.class_weight import compute_class_weight
 
-
+checkpoint_path = "/home/mustafa/ceastechremote/project/checkpoints/cp.ckpt"
+checkpoint_dir = os.path.dirname(checkpoint_path)
 
 nodules_csv = pandas.read_csv("/home/mustafa/project/LUNA16/cropped_nodules.csv")
 base_dir = "/home/mustafa/project/LUNA16/cropped_nodules/"
@@ -133,7 +134,7 @@ class BalancedAccuracyCallback(tf.keras.callbacks.Callback):
 '''
 # Constants for regularization
 l2_lambda = 0.0001  # L2 regularization constant
-dropout_rate = 0.75  # Dropout rate
+dropout_rate = 0.5  # Dropout rate
 
 
 def res_block(x, filters, kernel_size=3, stride=1, conv_shortcut=True, name=None):
@@ -258,7 +259,7 @@ test_gen = DataGenerator(val_data, val_label, base_dir, (31, 31, 31), batch_size
 #lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
 #    initial_learning_rate, decay_steps=100000, decay_rate=0.96, staircase=True
 #)
-epochs=30
+epochs=50
 
 initial_learning_rate = 0.1
 final_learning_rate = 0.00001
@@ -282,6 +283,11 @@ opt = tf.keras.optimizers.experimental.AdamW(
     name="AdamW",
 )
 
+
+# Create a callback that saves the model's weights
+cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                 save_weights_only=True,
+                                                 verbose=1)
 # Create a TensorBoard callback
 log_dir="/home/mustafa/project/LUNA16/"+ datetime.now().strftime("%Y%m%d-%H%M%S")
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
@@ -290,13 +296,13 @@ csv_logger = tf.keras.callbacks.CSVLogger('metrics_resnet.csv')
 #loss=keras.losses.BinaryCrossentropy(from_logits=True)
 model.compile(optimizer=opt,
               loss = tf.keras.losses.BinaryFocalCrossentropy(apply_class_balancing=True, from_logits=True, gamma=5),
-              metrics=['accuracy', 'AUC', tf.keras.metrics.SpecificityAtSensitivity(0.5), 'Precision', 'Recall',
-                       'FalseNegatives', 'FalsePositives', 'TrueNegatives', 'TruePositives', BalancedAccuracy()])
+              metrics=[BalancedAccuracy(), 'AUC' ,tf.keras.metrics.F1Score(threshold=0.5), tf.keras.metrics.SpecificityAtSensitivity(0.5), 'Precision', 'Recall',
+                     'TruePositives', 'FalsePositives', 'FalseNegatives', 'TrueNegatives', 'accuracy'])
 model.build(input_shape= (128,None,None,None,1))
 model.summary()
 # now let's train the model
 #EarlyStop = tf.keras.callbacks.EarlyStopping(monitor='precision', patience=4, restore_best_weights=True,)
-history = model.fit(train_gen, validation_data = test_gen, epochs=epochs, shuffle = False , verbose = 1 , callbacks = [csv_logger, tensorboard_callback],
+history = model.fit(train_gen, validation_data = test_gen, epochs=epochs, shuffle = False , verbose = 1 , callbacks = [csv_logger, tensorboard_callback, cp_callback],
 use_multiprocessing = True, class_weight=class_weight_dict)
 #,class_weight=None
-model.save("resnet")
+model.save("resnet.keras")
