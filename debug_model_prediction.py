@@ -124,51 +124,7 @@ ct_scan, spacing, origin = load_ct_scan(seriesuid, base_path)
 # Load your trained model
 model = tf.keras.models.load_model('/home/mustafa/project/resnet.keras',custom_objects={"BalancedAccuracy": BalancedAccuracy(), "F1Score": tfa.metrics.F1Score(num_classes=1, threshold=0.5)})
 
-def predict_nodule(ct_scan, model, world_coord, origin, spacing, window_size=(31,31,31)):
-    voxel_coord = worldToVoxelCoord(world_coord, origin, spacing)
-    #x, y, z = voxel_coord
-    z, y, x = voxel_coord
-    ct_shape = ct_scan.shape
-
-    # Calculate start and end points for sub-volume extraction
-    #start_x = max(int(x - window_size[0] // 2), 0)
-    #end_x = min(start_x + window_size[0], ct_shape[0])
-    #start_y = max(int(y - window_size[1] // 2), 0)
-    #end_y = min(start_y + window_size[1], ct_shape[1])
-    #start_z = max(int(z - window_size[2] // 2), 0)
-    #end_z = min(start_z + window_size[2], ct_shape[2])
-    # Calculate bounds for sub-volume extraction
-    half_window = [w // 2 for w in window_size]
-    start = [max(int(coord - half), 0) for coord, half in zip((x, y, z), half_window)]
-    end = [min(int(coord + half), dim) for coord, half, dim in zip((x, y, z), half_window, ct_shape)]
-    print("Voxel Coordinates:", x, y, z)
-    print("CT Scan Shape:", ct_shape)
-    print("Start Indices:", start)
-    print("End Indices:", end)
-
-    sub_volume = ct_scan[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
-    #sub_volume = ct_scan[start_x:end_x, start_y:end_y, start_z:end_z]
-    # Before padding
-    print("sub_volume shape:", sub_volume.shape)
-    print("Expected window size:", window_size)
-    padding = [(0, max(window_size[i] - sub_volume.shape[i], 0)) for i in range(3)]
-    print("Padding:", padding)
-    # Zero-pad the sub-volume if it's smaller than expected size
-    if sub_volume.shape != window_size:
-        padding = [(0, window_size[i] - sub_volume.shape[i]) for i in range(3)]
-        sub_volume = np.pad(sub_volume, padding, mode='constant', constant_values=0)
-
-    # Reshape sub_volume to include the channel dimension and normalize
-    sub_volume = sub_volume.astype(np.float32)
-    sub_volume = (sub_volume - np.min(sub_volume)) / (np.max(sub_volume) - np.min(sub_volume))
-    sub_volume_reshaped = sub_volume.reshape((*window_size, 1))
-    print("img_crop shape= ", sub_volume_reshaped.shape)
-    imgg = np.expand_dims(sub_volume_reshaped, axis=0)
-    print("imgg shape= ", imgg.shape)
-    prediction = model.predict(imgg)
-    predicted_state = np.argmax(prediction, axis=1)
-    return predicted_state
-def crop_nodule(image, new_spacing, window_size, origin, world_coord):
+def crop_predict_nodule(image, new_spacing, window_size, origin, world_coord):
     """Cropping the nodule in 3D cube"""
     # Attention: Z, Y, X
     #nodule_center = np.array([patient.coordZ, patient.coordY, patient.coordX])
@@ -207,9 +163,8 @@ def plot_nodule(nodule_crop):
 for _, row in nodules[nodules['seriesuid'] == seriesuid].iterrows():
 
     world_coord = np.array([row['coordZ'], row['coordY'], row['coordX']])
-    img, predicted_state = crop_nodule(ct_scan, spacing, window_size, origin, world_coord)
+    img, predicted_state = crop_predict_nodule(ct_scan, spacing, window_size, origin, world_coord)
     plot_nodule(img)
-    #predicted_state = predict_nodule(ct_scan, model, world_coord, origin, spacing)
     results.append({
         'seriesuid': seriesuid,
         'truth_coord': world_coord,
