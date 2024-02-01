@@ -16,19 +16,13 @@ seriesuid = random_nodule['seriesuid']
 def read_mhd_file(filepath):
     """Read and load CT image"""
     # Read file
-    #print("filepath for IMG = ", filepath)
     scan = sitk.ReadImage(filepath)
     # get the image to an array
     scan_array = sitk.GetArrayFromImage(scan)
-    #[0, :, :, :]
     # Read the origin of the image
     origin = np.array(list(reversed(scan.GetOrigin())))  # get [z, y, x] origin
-    # Delete the first element from origin
-    #origin = np.delete(origin, 0)
     # Read spacing of the image
     old_spacing = np.array(list(reversed(scan.GetSpacing())))  # get [z, y, x] spacing
-    # Delete the first element from spacing
-    #old_spacing = np.delete(old_spacing, 0)
     return scan_array, origin, old_spacing
 
 
@@ -51,16 +45,6 @@ def resample(image, old_spacing, new_spacing=[1, 1, 1]):
     new_spacing = old_spacing / real_resize_factor
     image = scipy.ndimage.interpolation.zoom(image, real_resize_factor, mode='nearest')
     return image, new_spacing
-
-
-# This is just for testing
-
-def worldToVoxelCoord(worldCoord, origin, spacing):
-    # There is no need for this function, the cropping will handle the voxel coords
-    stretchedVoxelCoord = np.absolute(worldCoord - origin)
-    voxelCoord = stretchedVoxelCoord / spacing
-    #voxelCoord = worldCoord
-    return voxelCoord
 
 def process_scan(path):
     """Read the CT image, normalize, resample, and crop and save the nodules"""
@@ -129,21 +113,18 @@ def crop_predict_nodule(image, new_spacing, window_size, origin, world_coord):
     # Attention: Z, Y, X
     #nodule_center = np.array([patient.coordZ, patient.coordY, patient.coordX])
     nodule_center = world_coord
-    # You can use the following line to convert from world to voxel coords.
-    # voxelCoord = worldToVoxelCoord(nodule_center, origin, new_spacing)
     # The following line will do the same math so no need for converting from world to voxel for the centre coords
     v_center = np.rint((nodule_center - origin) / new_spacing)
     v_center = np.array(v_center, dtype=int)
     # This is to creat the cube Z Y X
     zyx_1 = v_center - window_size  # Attention: Z, Y, X
     zyx_2 = v_center + window_size + 1
-    # This will give you a [19, 19, 19] volume
+    # This will give you a [31, 31, 31] volume
     img_crop = image[zyx_1[0]:zyx_2[0], zyx_1[1]:zyx_2[1], zyx_1[2]:zyx_2[2]]
     img_crop = np.expand_dims(img_crop, axis=-1)
-    print ("img_crop shape= ", img_crop.shape)
     img = np.expand_dims(img_crop, axis=0)
     prediction = model.predict(img)
-    predicted_state = np.argmax(prediction, axis=1)
+    #predicted_state = np.argmax(prediction, axis=1)
     return img_crop, prediction
 results = []
 window_size = 15
@@ -156,7 +137,6 @@ def plot_nodule(nodule_crop):
     for z_ in range(nodule_crop.shape[0]):
         plots[int(z_ / 4), z_ % 4].imshow(nodule_crop[z_, :, :], cmap='gray')
 
-    # The last subplot has no image because there are only 19 images.
     plt.show()
 
 
