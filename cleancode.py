@@ -1,8 +1,7 @@
 from datetime import datetime
-
 import numpy as np
 import os
-
+from scipy.ndimage import rotate
 #import matplotlib.pyplot as plt
 from time import time
 import tensorflow as tf
@@ -14,6 +13,8 @@ import pandas
 from sklearn.utils.class_weight import compute_class_weight
 
 
+checkpoint_path = "/home/mustafa/project/checkpoints/cp.ckpt"
+checkpoint_dir = os.path.dirname(checkpoint_path)
 
 nodules_csv = pandas.read_csv("/home/mustafa/project/LUNA16/cropped_nodules.csv")
 base_dir = "/home/mustafa/project/LUNA16/cropped_nodules/"
@@ -54,6 +55,40 @@ class_weights = compute_class_weight('balanced', classes=[0, 1], y=train_labels)
 class_weight_dict = {0: class_weights[0], 1: class_weights[1]}
 
 
+
+class BalancedAccuracy(tf.keras.metrics.Metric):
+    def __init__(self, name='balanced_accuracy', **kwargs):
+        super(BalancedAccuracy, self).__init__(name=name, **kwargs)
+        self.true_positives = self.add_weight(name='tp', initializer='zeros')
+        self.true_negatives = self.add_weight(name='tn', initializer='zeros')
+        self.false_positives = self.add_weight(name='fp', initializer='zeros')
+        self.false_negatives = self.add_weight(name='fn', initializer='zeros')
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true = tf.cast(y_true, tf.bool)
+        y_pred = tf.greater_equal(y_pred, 0.5)  # assuming your model outputs probabilities and threshold is 0.5
+
+        self.true_positives.assign_add(
+            tf.reduce_sum(tf.cast(tf.logical_and(tf.equal(y_true, True), tf.equal(y_pred, True)), tf.float32)))
+        self.true_negatives.assign_add(
+            tf.reduce_sum(tf.cast(tf.logical_and(tf.equal(y_true, False), tf.equal(y_pred, False)), tf.float32)))
+        self.false_positives.assign_add(
+            tf.reduce_sum(tf.cast(tf.logical_and(tf.equal(y_true, False), tf.equal(y_pred, True)), tf.float32)))
+        self.false_negatives.assign_add(
+            tf.reduce_sum(tf.cast(tf.logical_and(tf.equal(y_true, True), tf.equal(y_pred, False)), tf.float32)))
+
+    def result(self):
+        sensitivity = self.true_positives / (self.true_positives + self.false_negatives + tf.keras.backend.epsilon())
+        specificity = self.true_negatives / (self.true_negatives + self.false_positives + tf.keras.backend.epsilon())
+        return (sensitivity + specificity) / 2
+
+    def reset_state(self):
+        self.true_positives.assign(0.)
+        self.true_negatives.assign(0.)
+        self.false_positives.assign(0.)
+        self.false_negatives.assign(0.)
+
+'''
 def balanced_accuracy(y_true, y_pred):
     y_true = tf.keras.backend.flatten(y_true)
     y_pred = tf.round(tf.keras.backend.flatten(y_pred))
@@ -68,7 +103,7 @@ def balanced_accuracy(y_true, y_pred):
     specificity = tn / (tn + fp + tf.keras.backend.epsilon())
 
     return (sensitivity + specificity) / 2
-
+'''
 class DataGenerator(Sequence):
 # Learned from https://mahmoudyusof.github.io/facial-keypoint-detection/data-generator/
   def __init__(self, all_image_paths, labels, base_dir, output_size, shuffle=False, batch_size=10):
@@ -88,11 +123,21 @@ class DataGenerator(Sequence):
     self.labels = labels
     self.on_epoch_end()
 
+
+    # Calculate the number of abnormal (minority) samples
+    #self.num_abnormal_samples = sum(train_labels)
+
+    # Define a probability for each sample to be chosen based on its class
+    # This helps in oversampling the minority class
+    #weights = [4 if label == 1 else 1 for label in train_labels]  # For instance, 4 times more likely for minority class
+    #self.sampling_probabilities = np.array(weights) / sum(weights)
+    #self.sampling_probabilities /= self.sampling_probabilities.sum()
+
   def on_epoch_end(self):
     self.indices = np.arange(len(self.imgs))
     #print("indices ", self.indices)
     if self.shuffle:
-      np.random.shuffle(self.indices)
+        np.random.shuffle(self.indices)
 
   def __len__(self):
     return int(len(self.imgs) / self.batch_size)
@@ -107,10 +152,20 @@ class DataGenerator(Sequence):
 
     # get the indices of the requested batch
     indices = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
+    # Adjust the way indices are selected for each batch based on sampling probabilities
+    #indices = np.random.choice(self.indices, size=self.batch_size, p=self.sampling_probabilities[self.indices],
+      #                         replace=True)
 
     for i, data_index in enumerate(indices):
       img_path = os.path.join(self.base_dir, self.imgs[data_index])
       img = np.load(img_path)
+
+      # Augment if it's a minority class sample
+      label = self.labels[data_index]
+      #if label == 1:
+          # Apply rotation-based augmentation
+       #   rotation_angle = np.random.uniform(-20, 20)  # Example: rotate between -20 to 20 degrees
+        #  img = rotate(img, angle=rotation_angle, axes=(0, 1), reshape=False)
 
       if len(img.shape) == 3:
           img = np.expand_dims(img, axis=3)
@@ -179,7 +234,7 @@ model = Sequential([
 
 batch_size=128
 
-train_gen = DataGenerator(train_image_paths, train_labels, base_dir, (31, 31, 31), batch_size=batch_size, shuffle=False)
+train_gen = DataGenerator(train_image_paths, train_labels, base_dir, (31, 31, 31), batch_size=batch_size, shuffle=True)
 test_gen = DataGenerator(val_data, val_label, base_dir, (31, 31, 31), batch_size=batch_size, shuffle=False)
 
 
@@ -187,7 +242,7 @@ test_gen = DataGenerator(val_data, val_label, base_dir, (31, 31, 31), batch_size
 #lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
 #    initial_learning_rate, decay_steps=100000, decay_rate=0.96, staircase=True
 #)
-epochs=25
+epochs=50
 
 initial_learning_rate = 0.1
 final_learning_rate = 0.00001
@@ -211,31 +266,27 @@ opt = tf.keras.optimizers.experimental.AdamW(
     name="AdamW",
 )
 
+optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+
+# Create a callback that saves the model's weights
+cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                 save_weights_only=True,
+                                                 verbose=1)
+
 # Create a TensorBoard callback
 log_dir="/home/mustafa/project/LUNA16/"+ datetime.now().strftime("%Y%m%d-%H%M%S")
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-csv_logger = tf.keras.callbacks.CSVLogger('metrics_focal_lowmodel25_classWT.csv')
+csv_logger = tf.keras.callbacks.CSVLogger('/home/mustafa/project/metrics/cleancode.csv')
 #loss=keras.losses.BinaryCrossentropy(from_logits=True)
 model.compile(optimizer=opt,
               loss = tf.keras.losses.BinaryFocalCrossentropy(apply_class_balancing=True, from_logits=True, gamma=5),
               metrics=['accuracy', 'AUC', tf.keras.metrics.SpecificityAtSensitivity(0.5), 'Precision', 'Recall',
-                       'FalseNegatives', 'FalsePositives', 'TrueNegatives', 'TruePositives', balanced_accuracy])
+                       'FalseNegatives', 'FalsePositives', 'TrueNegatives', 'TruePositives', BalancedAccuracy()])
 model.build(input_shape= (128,None,None,None,1))
 model.summary()
 # now let's train the model
 #EarlyStop = tf.keras.callbacks.EarlyStopping(monitor='precision', patience=4, restore_best_weights=True,)
-history = model.fit(train_gen, validation_data = test_gen, epochs=epochs, shuffle = False , verbose = 1 , callbacks = [csv_logger, tensorboard_callback],
-use_multiprocessing = True, class_weight=class_weight_dict)
+history = model.fit(train_gen, validation_data = test_gen, epochs=epochs, shuffle = False , verbose = 1 , callbacks = [csv_logger, tensorboard_callback, cp_callback],
+use_multiprocessing = True, workers=10)
 #,class_weight=None
-model.save("gemerator_lowmodel_adamw_focal25_classWT")
-'''
-plt.interactive(False)
-plt.plot(history.history['accuracy'])
-plt.plot(history.history['val_accuracy'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
-plt.xlabel('epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-plt.show(block=True)
-plt.savefig('figure.png')
-'''
+model.save("cleancode.keras")

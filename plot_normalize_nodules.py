@@ -63,4 +63,4 @@ def plot_slices(num_rows, num_columns, width, height, data):
 
 # Visualize montage of slices.
 # 4 rows and 10 columns for 100 slices of the CT scan.
-#plot_slices(4, 10, 31, 31, images[:, :, :40])
+plot_slices(4, 10, 31, 31, images[:, :, :40])
