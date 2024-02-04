@@ -62,7 +62,7 @@ seriesuids_with_nodules = truth_table[truth_table['class'] == 1]['seriesuid'].un
 print(f"Total seriesuids with nodules: {len(seriesuids_with_nodules)}")
 
 # Randomly sample 5% of the seriesuids
-sample_size = int(len(seriesuids_with_nodules) * 0.005)  # 5% of the total
+sample_size = int(len(seriesuids_with_nodules) * 0.002)  # 5% of the total
 sampled_seriesuids = random.sample(list(seriesuids_with_nodules), sample_size)
 print(f"Total seriesuids sampled for processing: {len(sampled_seriesuids)}")
 
@@ -227,11 +227,11 @@ def predict_with_scanning_window(ct_image, model, seriesuid, origin, spacing, wi
 
                 # Make a prediction
                 prediction = model.predict(sub_volume_reshaped)
-                predicted_state = np.argmax(prediction, axis=1)
+                #predicted_state = np.argmax(prediction, axis=1)
 
                 # Prepare metadata for this prediction
                 prediction_info = {
-                    'predicted_state': predicted_state[0],
+                    'predicted_state': prediction[0],
                     'seriesuid': seriesuid,
                     'coords': (x, y, z),
                     'ct_metadata': {'origin': origin, 'spacing': spacing}
