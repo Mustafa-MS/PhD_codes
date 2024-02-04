@@ -113,12 +113,16 @@ def crop_predict_nodule(image, new_spacing, window_size, origin, world_coord):
     # Attention: Z, Y, X
     #nodule_center = np.array([patient.coordZ, patient.coordY, patient.coordX])
     nodule_center = world_coord
+    print("nodule_center ", nodule_center)
     # The following line will do the same math so no need for converting from world to voxel for the centre coords
     v_center = np.rint((nodule_center - origin) / new_spacing)
     v_center = np.array(v_center, dtype=int)
+    print("v_center ", v_center)
     # This is to creat the cube Z Y X
     zyx_1 = v_center - window_size  # Attention: Z, Y, X
+    print("zyx_1 ", zyx_1)
     zyx_2 = v_center + window_size + 1
+    print("zyx_2 ", zyx_2)
     # This will give you a [31, 31, 31] volume
     img_crop = image[zyx_1[0]:zyx_2[0], zyx_1[1]:zyx_2[1], zyx_1[2]:zyx_2[2]]
     img_crop = np.expand_dims(img_crop, axis=-1)
@@ -158,15 +162,13 @@ for _, row in nodules[nodules['seriesuid'] == seriesuid].iterrows():
 
 
 
-
-'''
 # Save results to CSV
-with open('/home/mustafa/project/metrics/debug_results.csv', 'w', newline='') as file:
-    writer = csv.DictWriter(file, fieldnames=results[0].keys())
-    writer.writeheader()
-    for result in results:
-        writer.writerow(result)
-        print("Truth Coordinates:", result['truth_coord'], "Predicted State:", result['predicted_state'], "Truth Class:", result['truth_class'])
-        plot_sub_volume(ct_scan, result['truth_coord'])
-'''
+# with open('/home/mustafa/project/metrics/debug_results.csv', 'w', newline='') as file:
+#     writer = csv.DictWriter(file, fieldnames=results[0].keys())
+#     writer.writeheader()
+#     for result in results:
+#         writer.writerow(result)
+#         print("Truth Coordinates:", result['truth_coord'], "Predicted State:", result['predicted_state'], "Truth Class:", result['truth_class'])
+#         plot_sub_volume(ct_scan, result['truth_coord'])
+
 
