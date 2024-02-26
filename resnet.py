@@ -6,19 +6,37 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras.utils import Sequence
 import tensorflow_addons as tfa
-import pandas
+import pandas as pd
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import train_test_split
 
 checkpoint_path = "/home/mustafa/project/checkpoints/resnet100/{epoch:02d}-{val_loss:.2f}.keras"
 checkpoint_dir = os.path.dirname(checkpoint_path)
 
-nodules_csv = pandas.read_csv("/home/mustafa/project/LUNA16/cropped_nodules.csv")
+nodules_csv = pd.read_csv("/home/mustafa/project/LUNA16/cropped_nodules.csv")
 base_dir = "/home/mustafa/project/LUNA16/cropped_nodules/"
-nodules = nodules_csv.rename(columns={'SN': 'ID'})
+#nodules = nodules_csv.rename(columns={'SN': 'ID'})
 
+train_nodules, val_nodules = train_test_split(nodules_csv, test_size=0.10, stratify=nodules_csv['state'], random_state=42)
+
+# Convert IDs to paths for the train set
+train_data = (train_nodules['SN'].astype(str) + '.npy').tolist()
+train_labels = train_nodules['state'].tolist()
+
+# Convert IDs to paths for the validation set
+val_data = (val_nodules['SN'].astype(str) + '.npy').tolist()
+val_labels = val_nodules['state'].tolist()
+
+# Print the sizes of the splits to verify
+print("x_train = ", len(train_data))
+print("y_train = ", len(train_labels))
+print("x_val = ", len(val_data))
+print("y_val = ", len(val_labels))
+
+'''
 # Split abnormal and normal nodules
-abnormal_nodules = nodules[nodules['state'] == 1]
-normal_nodules = nodules[nodules['state'] == 0]
+abnormal_nodules = nodules_csv[nodules_csv['state'] == 1]
+normal_nodules = nodules_csv[nodules_csv['state'] == 0]
 
 # Sample for validation
 val_abnormal = abnormal_nodules.sample(frac=0.10)
@@ -32,18 +50,19 @@ print("train_abnormal = ", len(train_abnormal))
 train_normal = normal_nodules.drop(val_normal.index)
 print("train normal = ", len(train_normal))
 # Convert IDs to paths
-val_data = (val_abnormal['ID'].astype(str) + '.npy').tolist() + (val_normal['ID'].astype(str) + '.npy').tolist()
-train_data = (train_abnormal['ID'].astype(str) + '.npy').tolist() + (train_normal['ID'].astype(str) + '.npy').tolist()
+val_data = (val_abnormal['SN'].astype(str) + '.npy').tolist() + (val_normal['SN'].astype(str) + '.npy').tolist()
+train_data = (train_abnormal['SN'].astype(str) + '.npy').tolist() + (train_normal['SN'].astype(str) + '.npy').tolist()
 
 # Get the labels
 val_labels = val_abnormal['state'].tolist() + val_normal['state'].tolist()
 train_labels = train_abnormal['state'].tolist() + train_normal['state'].tolist()
 
-print("x_val = ", len(val_data))
-print("x_train = ", len(train_data))
-print("y_val = ", len(val_labels))
-print("y_train = ", len(train_labels))
 
+print("x_train = ", len(train_data))
+print("y_train = ", len(train_labels))
+print("x_val = ", len(val_data))
+print("y_val = ", len(val_labels))
+'''
 
 '''
 all_image_paths = os.listdir(base_dir)
@@ -279,7 +298,7 @@ csv_logger = tf.keras.callbacks.CSVLogger('metrics_resnet100.csv')
 
 #loss=keras.losses.BinaryCrossentropy(from_logits=True)
 model.compile(optimizer=opt,
-              loss = tf.keras.losses.BinaryFocalCrossentropy(apply_class_balancing=True, from_logits=True, gamma=5),
+              loss = tf.keras.losses.BinaryFocalCrossentropy(apply_class_balancing=True, gamma=5),
               metrics=[BalancedAccuracy(), 'AUC' ,tfa.metrics.F1Score(num_classes=1, threshold=0.5), tf.keras.metrics.SpecificityAtSensitivity(0.5), 'Precision', 'Recall',
                      'TruePositives', 'FalsePositives', 'FalseNegatives', 'TrueNegatives', 'accuracy'])
 model.build(input_shape= (batch_size,None,None,None,1))
